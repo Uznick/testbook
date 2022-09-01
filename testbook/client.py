@@ -157,7 +157,8 @@ class TestbookNotebookClient(NotebookClient):
         """
         Return cell text output
         """
-        cell_index = self._cell_index(cell)
+        # temp hack because _cell_index returns a list now to enable multiple cells with the same tag
+        cell_index = self._cell_index(cell)[0]
         return self._output_text(self.nb['cells'][cell_index])
 
     def cell_execute_result(self, cell: Union[int, str]) -> List[Dict[str, Any]]:
