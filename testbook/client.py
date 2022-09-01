@@ -92,9 +92,9 @@ class TestbookNotebookClient(NotebookClient):
 
         return text.strip()
 
-    def _cell_index(self, tag: Union[int, str]) -> int:
+    def _cell_index(self, tag: Union[int, str]) -> List[int]:
         """
-        Get cell index from the cell tag
+        Get indexes of cells with the specified tag
         """
 
         if isinstance(tag, int):
@@ -102,10 +102,15 @@ class TestbookNotebookClient(NotebookClient):
         elif not isinstance(tag, str):
             raise TypeError('expected tag as str')
 
+        cell_indexes = []
+
         for idx, cell in enumerate(self.cells):
             metadata = cell['metadata']
             if "tags" in metadata and tag in metadata['tags']:
-                return idx
+                cell_indexes.append(idx)
+
+        if cell_indexes:
+            return sorted(cell_indexes)
 
         raise TestbookCellTagNotFoundError("Cell tag '{}' not found".format(tag))
 
@@ -125,7 +130,9 @@ class TestbookNotebookClient(NotebookClient):
         cell_indexes = cell
 
         if all(isinstance(x, str) for x in cell):
-            cell_indexes = [self._cell_index(tag) for tag in cell]
+            cell_indexes = []
+            for tag in cell:
+                cell_indexes += self._cell_index(tag)
 
         executed_cells = []
         for idx in cell_indexes:
@@ -282,17 +289,26 @@ class TestbookNotebookClient(NotebookClient):
         inject_code = f"""
             import json
             from IPython import get_ipython
-            from IPython.display import JSON
+            from IPython.display import JSON           
+            
+            class FallbackEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    import pandas
+                    
+                    if isinstance(obj, Exception):
+                        return 'x'
+                    if isinstance(obj, pandas.Series):
+                        return obj.to_json()
+                    
+                    return json.JSONEncoder.default(self, obj)
 
             {save_varname} = get_ipython().last_execution_result.result
-
-            json.dumps({save_varname})
+            json.dumps({save_varname}, cls=FallbackEncoder)
             JSON({{"value" : {save_varname}}})
         """
 
         try:
             outputs = self.inject(inject_code, pop=True).outputs
-
             if outputs[0].output_type == "error":
                 # will receive error when `allow_errors` is set to True
                 raise TestbookRuntimeError(
