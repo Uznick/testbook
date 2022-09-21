@@ -98,7 +98,7 @@ class TestbookNotebookClient(NotebookClient):
         """
 
         if isinstance(tag, int):
-            return tag
+            return [tag,]
         elif not isinstance(tag, str):
             raise TypeError('expected tag as str')
 
