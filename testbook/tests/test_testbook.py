@@ -27,15 +27,15 @@ def test_testbook_decorator_with_fixture(nb, tmp_path):
 
 
 @testbook('testbook/tests/resources/inject.ipynb', execute=True)
-@pytest.mark.parametrize("cell_index_args, expected_result", [(2, 2), ('hello', 1)])
+@pytest.mark.parametrize("cell_index_args, expected_result", [(2, [2]), ('hello', [1])])
 def test_testbook_decorator_with_markers(nb, cell_index_args, expected_result):
-    assert nb._cell_index(cell_index_args) == expected_result
+    assert nb._cell_indexes(cell_index_args) == expected_result
 
 
-@pytest.mark.parametrize("cell_index_args, expected_result", [(2, 2), ('hello', 1)])
+@pytest.mark.parametrize("cell_index_args, expected_result", [(2, [2]), ('hello', [1])])
 @testbook('testbook/tests/resources/inject.ipynb', execute=True)
 def test_testbook_decorator_with_markers_order_does_not_matter(nb, cell_index_args, expected_result):
-    assert nb._cell_index(cell_index_args) == expected_result
+    assert nb._cell_indexes(cell_index_args) == expected_result
 
 
 def test_testbook_execute_all_cells_context_manager():
