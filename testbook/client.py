@@ -92,7 +92,7 @@ class TestbookNotebookClient(NotebookClient):
 
         return text.strip()
 
-    def _cell_index(self, tag: Union[int, str]) -> List[int]:
+    def _cell_indexes(self, tag: Union[int, str]) -> List[int]:
         """
         Get indexes of cells with the specified tag
         """
@@ -119,7 +119,9 @@ class TestbookNotebookClient(NotebookClient):
         Executes a cell or list of cells
         """
         if isinstance(cell, slice):
-            start, stop = self._cell_index(cell.start), self._cell_index(cell.stop)
+            # We expect that slices contain indexes and indexes are unique, so there's a single
+            # element in a list that's returned by _cell_indexes()
+            start, stop = self._cell_indexes(cell.start)[0], self._cell_indexes(cell.stop)[0]
             if cell.step is not None:
                 raise TestbookError('testbook does not support step argument')
 
@@ -132,7 +134,7 @@ class TestbookNotebookClient(NotebookClient):
         if all(isinstance(x, str) for x in cell):
             cell_indexes = []
             for tag in cell:
-                cell_indexes += self._cell_index(tag)
+                cell_indexes += self._cell_indexes(tag)
 
         executed_cells = []
         for idx in cell_indexes:
@@ -157,12 +159,12 @@ class TestbookNotebookClient(NotebookClient):
         """
         Return cell text output
         """
-        # temp hack because _cell_index returns a list now to enable multiple cells with the same tag
-        cell_index = self._cell_index(cell)[0]
+        # temp hack because _cell_indexes returns a list now to enable multiple cells with the same tag
+        cell_index = self._cell_indexes(cell)[0]
         return self._output_text(self.nb['cells'][cell_index])
 
     def cell_execute_result(self, cell: Union[int, str]) -> List[Dict[str, Any]]:
-        """Return the execute results of cell at a given index or with a given tag.
+        """Return the execute results of cells at a given index or with a given tag.
 
         Each result is expressed with a dictionary for which the key is the mimetype
         of the data. A same result can have different representation corresponding to
@@ -185,8 +187,14 @@ class TestbookNotebookClient(NotebookClient):
         TestbookCellTagNotFoundError
             If tag is not found
         """
-        cell_index = self._cell_index(cell)
-        return self._execute_result(self.nb['cells'][cell_index])
+        cell_indexes = self._cell_indexes(cell)
+
+        results = []
+
+        for index in cell_indexes:
+            results.extend(self._execute_result(self.nb['cells'][index]))
+
+        return results
 
     def inject(
         self,
@@ -235,9 +243,9 @@ class TestbookNotebookClient(NotebookClient):
         if after is not None and before is not None:
             raise ValueError("pass either before or after as kwargs")
         elif before is not None:
-            inject_idx = self._cell_index(before)
+            inject_idx = self._cell_indexes(before)[0]
         elif after is not None:
-            inject_idx = self._cell_index(after) + 1
+            inject_idx = self._cell_indexes(after)[0] + 1
 
         code_cell = new_code_cell(lines)
         self.cells.insert(inject_idx, code_cell)
