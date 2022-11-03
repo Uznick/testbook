@@ -92,20 +92,25 @@ class TestbookNotebookClient(NotebookClient):
 
         return text.strip()
 
-    def _cell_index(self, tag: Union[int, str]) -> int:
+    def _cell_indexes(self, tag: Union[int, str]) -> List[int]:
         """
-        Get cell index from the cell tag
+        Get indexes of cells with the specified tag
         """
 
         if isinstance(tag, int):
-            return tag
+            return [tag,]
         elif not isinstance(tag, str):
             raise TypeError('expected tag as str')
+
+        cell_indexes = []
 
         for idx, cell in enumerate(self.cells):
             metadata = cell['metadata']
             if "tags" in metadata and tag in metadata['tags']:
-                return idx
+                cell_indexes.append(idx)
+
+        if cell_indexes:
+            return sorted(cell_indexes)
 
         raise TestbookCellTagNotFoundError("Cell tag '{}' not found".format(tag))
 
@@ -114,7 +119,9 @@ class TestbookNotebookClient(NotebookClient):
         Executes a cell or list of cells
         """
         if isinstance(cell, slice):
-            start, stop = self._cell_index(cell.start), self._cell_index(cell.stop)
+            # We expect that slices contain indexes and indexes are unique, so there's a single
+            # element in a list that's returned by _cell_indexes()
+            start, stop = self._cell_indexes(cell.start)[0], self._cell_indexes(cell.stop)[0]
             if cell.step is not None:
                 raise TestbookError('testbook does not support step argument')
 
@@ -125,7 +132,9 @@ class TestbookNotebookClient(NotebookClient):
         cell_indexes = cell
 
         if all(isinstance(x, str) for x in cell):
-            cell_indexes = [self._cell_index(tag) for tag in cell]
+            cell_indexes = []
+            for tag in cell:
+                cell_indexes += self._cell_indexes(tag)
 
         executed_cells = []
         for idx in cell_indexes:
@@ -150,11 +159,12 @@ class TestbookNotebookClient(NotebookClient):
         """
         Return cell text output
         """
-        cell_index = self._cell_index(cell)
+        # temp hack because _cell_indexes returns a list now to enable multiple cells with the same tag
+        cell_index = self._cell_indexes(cell)[0]
         return self._output_text(self.nb['cells'][cell_index])
 
     def cell_execute_result(self, cell: Union[int, str]) -> List[Dict[str, Any]]:
-        """Return the execute results of cell at a given index or with a given tag.
+        """Return the execute results of cells at a given index or with a given tag.
 
         Each result is expressed with a dictionary for which the key is the mimetype
         of the data. A same result can have different representation corresponding to
@@ -177,8 +187,14 @@ class TestbookNotebookClient(NotebookClient):
         TestbookCellTagNotFoundError
             If tag is not found
         """
-        cell_index = self._cell_index(cell)
-        return self._execute_result(self.nb['cells'][cell_index])
+        cell_indexes = self._cell_indexes(cell)
+
+        results = []
+
+        for index in cell_indexes:
+            results.extend(self._execute_result(self.nb['cells'][index]))
+
+        return results
 
     def inject(
         self,
@@ -227,9 +243,9 @@ class TestbookNotebookClient(NotebookClient):
         if after is not None and before is not None:
             raise ValueError("pass either before or after as kwargs")
         elif before is not None:
-            inject_idx = self._cell_index(before)
+            inject_idx = self._cell_indexes(before)[0]
         elif after is not None:
-            inject_idx = self._cell_index(after) + 1
+            inject_idx = self._cell_indexes(after)[0] + 1
 
         code_cell = new_code_cell(lines)
         self.cells.insert(inject_idx, code_cell)
@@ -282,17 +298,26 @@ class TestbookNotebookClient(NotebookClient):
         inject_code = f"""
             import json
             from IPython import get_ipython
-            from IPython.display import JSON
+            from IPython.display import JSON           
+            
+            class FallbackEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    import pandas
+                    
+                    if isinstance(obj, Exception):
+                        return 'x'
+                    if isinstance(obj, pandas.Series):
+                        return obj.to_json()
+                    
+                    return json.JSONEncoder.default(self, obj)
 
             {save_varname} = get_ipython().last_execution_result.result
-
-            json.dumps({save_varname})
+            json.dumps({save_varname}, cls=FallbackEncoder)
             JSON({{"value" : {save_varname}}})
         """
 
         try:
             outputs = self.inject(inject_code, pop=True).outputs
-
             if outputs[0].output_type == "error":
                 # will receive error when `allow_errors` is set to True
                 raise TestbookRuntimeError(

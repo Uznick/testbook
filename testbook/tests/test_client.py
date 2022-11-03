@@ -12,9 +12,9 @@ def notebook():
         yield tb
 
 
-@pytest.mark.parametrize("cell_index_args, expected_result", [(2, 2), ('hello', 1)])
+@pytest.mark.parametrize("cell_index_args, expected_result", [(2, [2]), ('hello', [1])])
 def test_cell_index(cell_index_args, expected_result, notebook):
-    assert notebook._cell_index(cell_index_args) == expected_result
+    assert notebook._cell_indexes(cell_index_args) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -23,7 +23,7 @@ def test_cell_index(cell_index_args, expected_result, notebook):
 )
 def test_cell_index_raises_error(cell_index_args, expected_error, notebook):
     with pytest.raises(expected_error):
-        notebook._cell_index(cell_index_args)
+        notebook._cell_indexes(cell_index_args)
 
 
 @pytest.mark.parametrize(

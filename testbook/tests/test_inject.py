@@ -66,10 +66,10 @@ def test_inject_raises_exception(notebook):
 
 def test_inject_before_after(notebook):
     notebook.inject("say_hello()", run=False, after="hello")
-    assert notebook.cells[notebook._cell_index("hello") + 1].source == "say_hello()"
+    assert notebook.cells[notebook._cell_indexes("hello")[0] + 1].source == "say_hello()"
 
     notebook.inject("say_bye()", before="hello")
-    assert notebook.cells[notebook._cell_index("hello") - 1].source == "say_bye()"
+    assert notebook.cells[notebook._cell_indexes("hello")[0] - 1].source == "say_bye()"
 
     with pytest.raises(ValueError):
         notebook.inject("say_hello()", before="hello", after="bye")
